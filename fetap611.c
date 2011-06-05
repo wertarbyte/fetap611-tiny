@@ -99,6 +99,7 @@ static enum phone_state {
 	 *
 	 * Successors:
 	 * -> PICKEDUP (picking up the earphone)
+	 * -> RINGING (incoming call)
 	 */
 	IDLE = 0,
 	/*
@@ -107,6 +108,7 @@ static enum phone_state {
 	 * Successors:
 	 * -> DIALING (once a number is dialed)
 	 * -> IDLE (earphone put back)
+	 * -> RINGING (incoming call)
 	 */
 	PICKEDUP,
 	/*
@@ -116,6 +118,7 @@ static enum phone_state {
 	 * -> DIALING (another number is dialed)
 	 * -> IDLE (hangup)
 	 * -> ESTABLISHED (timeout after dialing the last number?)
+	 * -> RINGING (incoming call)
 	 */
 	DIALING,
 	/*
@@ -125,31 +128,49 @@ static enum phone_state {
 	 * -> IDLE (hangup)
 	 */
 	ESTABLISHED,
+	/*
+	 * an incoming call is being detected
+	 *
+	 * Successors:
+	 * -> IDLE (the call is not taken)
+	 * -> ESTABLISHED (picked up the phone)
+	 */
+	RINGING,
 } state = IDLE;
 
 static void hangup(void) {
 	switch(state) {
-		case ESTABLISHED:
-			// terminate connection
-			press_key(KEY_HUP, SHORT);
+		case RINGING:
+			/*
+			 * A ringing phone without a hung up earphone is unusal;
+			 * We handle it by allowing the fork switch to be triggered
+			 * and ignoring the hangup signal caused by this
+			 */
 			break;
 		case DIALING:
 			// clear dialed numbers
 			press_key(KEY_C, LONG);
 			dial_num = 0;
 			loopcount_dial = 0;
-			break;
+		case ESTABLISHED:
+			// terminate connection
+			press_key(KEY_HUP, SHORT);
 		default:
-			break;
+			state = IDLE;
 	}
-	state = IDLE;
-	LED_PORT |= 1<<LED_BIT;
 }
 
 static void pickup(void) {
-	if (state == IDLE) {
-		state = PICKEDUP;
-		LED_PORT &= ~(1<<LED_BIT);
+	switch(state) {
+		case IDLE:
+			state = PICKEDUP;
+			break;
+		case RINGING:
+			// accept phone call
+			press_key(KEY_CALL, SHORT);
+			state = ESTABLISHED;
+		default:
+			break;
 	}
 }
 
@@ -174,6 +195,20 @@ static void dial_number(uint8_t n) {
 static void connect(void) {
 	press_key( KEY_CALL, SHORT );
 	state = ESTABLISHED;
+}
+
+static void incoming_call(void) {
+	state = RINGING;
+	// TODO ring bell
+}
+
+static void incoming_ceased(void) {
+	// FIXME we should use two distinguished states here
+	if (st_hup) {
+		state = IDLE;
+	} else {
+		state = PICKEDUP;
+	}
 }
 
 int main(void) {
