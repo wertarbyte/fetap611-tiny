@@ -7,12 +7,12 @@
 #define LED_PORT PORTB
 
 struct km_con {
-	uint8_t *ddr;
-	uint8_t *port;
-	uint8_t bit;
+	volatile uint8_t *ddr;
+	volatile uint8_t *port;
+	const uint8_t bit;
 };
 
-static enum key {
+enum key {
 	KEY_0 = 0,
 	KEY_1,
 	KEY_2,
@@ -61,6 +61,9 @@ static void wait(uint8_t ms) {
 	}
 }
 
+#define SHORT 40
+#define LONG 200
+
 static void press_key(enum key k, uint8_t duration) {
 	for (uint8_t i=0; i<2; i++) {
 		*(keyboard[k][i].port) |= 1<<keyboard[k][i].bit;
@@ -85,26 +88,92 @@ static uint8_t st_hup = 1;
 
 static uint8_t st_dial = 1;
 
+// add up the number of dial signals
 static uint8_t dial_num = 0;
+// count the number of loops since the last dial signal
+static uint8_t loopcount_dial = 0;
+
+static enum phone_state {
+	/*
+	 * Hung up
+	 *
+	 * Successors:
+	 * -> PICKEDUP (picking up the earphone)
+	 */
+	IDLE = 0,
+	/*
+	 * earphone has been picked up
+	 *
+	 * Successors:
+	 * -> DIALING (once a number is dialed)
+	 * -> IDLE (earphone put back)
+	 */
+	PICKEDUP,
+	/*
+	 * a number as been dialed
+	 *
+	 * Successors:
+	 * -> DIALING (another number is dialed)
+	 * -> IDLE (hangup)
+	 * -> ESTABLISHED (timeout after dialing the last number?)
+	 */
+	DIALING,
+	/*
+	 * the phone number has been dialed by the cellphone
+	 *
+	 * Successors:
+	 * -> IDLE (hangup)
+	 */
+	ESTABLISHED,
+} state = IDLE;
 
 static void hangup(void) {
+	switch(state) {
+		case ESTABLISHED:
+			// terminate connection
+			press_key(KEY_HUP, SHORT);
+			break;
+		case DIALING:
+			// clear dialed numbers
+			press_key(KEY_C, LONG);
+			dial_num = 0;
+			loopcount_dial = 0;
+			break;
+		default:
+			break;
+	}
+	state = IDLE;
 	LED_PORT |= 1<<LED_BIT;
-	press_key(KEY_HUP, 20);
 }
 
 static void pickup(void) {
-	LED_PORT &= ~(1<<LED_BIT);
-	press_key(KEY_CALL, 20);
+	if (state == IDLE) {
+		state = PICKEDUP;
+		LED_PORT &= ~(1<<LED_BIT);
+	}
 }
 
 static void dial_number(uint8_t n) {
-	while (n--) {
-		LED_PORT |= 1<<LED_BIT;
-		_delay_ms(40);
-		LED_PORT &= ~(1<<LED_BIT);
-		_delay_ms(40);
+	switch (state) {
+		case PICKEDUP:
+			state = DIALING;
+		case DIALING:
+		case ESTABLISHED:
+			while (n--) {
+				LED_PORT |= 1<<LED_BIT;
+				_delay_ms(40);
+				LED_PORT &= ~(1<<LED_BIT);
+				_delay_ms(40);
+			}
+			press_key(n, SHORT); // for 0-9, the enum is sorted
+		default:
+			break;
 	}
-	press_key(n, 20); // for 0-9, the enum is sorted
+}
+
+static void connect(void) {
+	press_key( KEY_CALL, SHORT );
+	state = ESTABLISHED;
 }
 
 int main(void) {
@@ -120,7 +189,6 @@ int main(void) {
 		*(keyboard[1][i].ddr) |= 1<<keyboard[1][i].bit;
 	}
 
-	uint8_t loopcount_dial = 0;
 	while(1) {
 		uint8_t hup = ( (HUP_PIN & (1<<HUP_BIT)) != 0 );
 		if (hup != st_hup) {
@@ -131,23 +199,21 @@ int main(void) {
 			}
 			st_hup = hup;
 		}
-		if (!st_hup) {
-			uint8_t dial = ( (DIAL_PIN & (1<<DIAL_BIT)) != 0 );
-			if (dial != st_dial) {
-				if (dial) {
-					//LED_PORT |= 1<<LED_BIT;
-					dial_num++;
-					loopcount_dial=0;
-				} else {
-					//LED_PORT &= ~(1<<LED_BIT);
-				}
-				st_dial = dial;
+		uint8_t dial = ( (DIAL_PIN & (1<<DIAL_BIT)) != 0 );
+		if (dial != st_dial) {
+			if (dial) {
+				dial_num++;
+				loopcount_dial=0;
 			}
-			if (loopcount_dial > 10 && dial_num > 0) {
-				dial_number(dial_num%10);
-				dial_num = 0;
-				loopcount_dial = 0;
-			}
+			st_dial = dial;
+		}
+		if (loopcount_dial > 10 && dial_num > 0) {
+			dial_number(dial_num%10);
+			dial_num = 0;
+			loopcount_dial = 0;
+		}
+		if (state == DIALING && loopcount_dial > 50) {
+			connect();
 		}
 		_delay_ms(25);
 		loopcount_dial++;
