@@ -81,6 +81,11 @@ static void press_key(enum key k, uint8_t duration) {
 #define BELL_PORT PORTB
 #define BELL_BIT PB0
 
+#define RING_DDR DDRB
+#define RING_PORT PORTB
+#define RING_PIN PINB
+#define RING_BIT PB1
+
 #define HUP_DDR DDRB
 #define HUP_PORT PORTB
 #define HUP_PIN PINB
@@ -99,6 +104,9 @@ static uint8_t st_dial = 1;
 static uint8_t dial_num = 0;
 // count the number of loops since the last dial signal
 static uint8_t loopcount_dial = 0;
+
+// count the number of loops since the last ring
+static uint8_t loopcount_ring = 0;
 
 static enum phone_state {
 	/*
@@ -204,9 +212,15 @@ static void connect(void) {
 	state = ESTABLISHED;
 }
 
+void ring_bell(void) {
+	BELL_PORT &= ~(1<<BELL_BIT);
+	_delay_ms(50);
+	BELL_PORT |= 1<<BELL_BIT;
+}
+
 static void incoming_call(void) {
 	state = RINGING;
-	// TODO ring bell
+	ring_bell();
 }
 
 static void incoming_ceased(void) {
@@ -218,16 +232,13 @@ static void incoming_ceased(void) {
 	}
 }
 
-void ring_bell(void) {
-	BELL_PORT &= ~(1<<BELL_BIT);
-	_delay_ms(50);
-	BELL_PORT |= 1<<BELL_BIT;
-}
-
 int main(void) {
 	LED_DDR |= 1<<LED_BIT;
 	BELL_DDR |= 1<<BELL_BIT;
 	BELL_PORT |= 1<<BELL_BIT; // PNP transistor, HIGH == on, LOW == off
+
+	RING_DDR &= ~(1<<RING_BIT);
+	// RING_PORT |= 1<<RING_BIT;
 
 	HUP_DDR &= ~(1<<HUP_BIT); // input
 	HUP_PORT |= 1<<HUP_BIT; // enable internal pull-up
@@ -266,7 +277,16 @@ int main(void) {
 		if (state == DIALING && loopcount_dial > 200) {
 			connect();
 		}
+		uint8_t ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
+		if (ringing && state != ESTABLISHED) {
+			loopcount_ring = 0;
+			incoming_call();
+		}
+		if (state == RINGING && loopcount_ring > 50) {
+			incoming_ceased();
+		}
 		loopcount_dial++;
+		loopcount_ring++;
 		_delay_ms(25);
 	}
 	return 0;
