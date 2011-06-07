@@ -26,6 +26,8 @@ enum key {
 	KEY_HUP,
 	KEY_CALL,
 	KEY_C,
+	KEY_ASTERISK,
+	KEY_RIGHT,
 	KEY_CNT
 };
 
@@ -47,22 +49,24 @@ static const struct km_con keyboard[][2] = {
 	[ KEY_4 ] = { B, H }, 
 	[ KEY_5 ] = { E, H }, 
 	[ KEY_6 ] = { H, I }, 
-	[ KEY_7 ] = { G, B }, 
+	[ KEY_7 ] = { B, G },
 	[ KEY_8 ] = { E, G }, 
 	[ KEY_9 ] = { G, I }, 
 	[ KEY_C ] = { B, I },
 	[ KEY_CALL ] = { A, B },
 	[ KEY_HUP ] = { C, D },
+	[ KEY_ASTERISK ] = { F, G },
+	[ KEY_RIGHT ] = { B, E},
 };
 
-static void wait(uint8_t ms) {
-	while (ms--) {
-		_delay_ms(1);
+static void wait(uint8_t cs) {
+	while (cs--) {
+		_delay_ms(10);
 	}
 }
 
-#define SHORT 40
-#define LONG 200
+#define SHORT 80
+#define LONG 250
 
 static void press_key(enum key k, uint8_t duration) {
 	for (uint8_t i=0; i<2; i++) {
@@ -72,6 +76,7 @@ static void press_key(enum key k, uint8_t duration) {
 	for (uint8_t i=0; i<2; i++) {
 		*(keyboard[k][i].port) &= ~(1<<keyboard[k][i].bit);
 	}
+	wait(5);
 }
 
 #define HUP_DDR DDRB
@@ -180,13 +185,13 @@ static void dial_number(uint8_t n) {
 			state = DIALING;
 		case DIALING:
 		case ESTABLISHED:
+			press_key(n, SHORT); // for 0-9, the enum is sorted
 			while (n--) {
 				LED_PORT |= 1<<LED_BIT;
 				_delay_ms(40);
 				LED_PORT &= ~(1<<LED_BIT);
 				_delay_ms(40);
 			}
-			press_key(n, SHORT); // for 0-9, the enum is sorted
 		default:
 			break;
 	}
@@ -225,6 +230,7 @@ int main(void) {
 	}
 
 	while(1) {
+#if 1
 		uint8_t hup = ( (HUP_PIN & (1<<HUP_BIT)) != 0 );
 		if (hup != st_hup) {
 			if (hup) {
@@ -235,6 +241,13 @@ int main(void) {
 			st_hup = hup;
 		}
 		uint8_t dial = ( (DIAL_PIN & (1<<DIAL_BIT)) != 0 );
+		/*
+		if (dial) {
+			LED_PORT |= 1<<LED_BIT;
+		} else {
+			LED_PORT &= ~(1<<LED_BIT);
+		}
+		*/
 		if (dial != st_dial) {
 			if (dial) {
 				dial_num++;
@@ -247,11 +260,20 @@ int main(void) {
 			dial_num = 0;
 			loopcount_dial = 0;
 		}
-		if (state == DIALING && loopcount_dial > 50) {
-			connect();
+		if (state == DIALING && loopcount_dial > 200) {
+			//connect();
 		}
 		_delay_ms(25);
 		loopcount_dial++;
+#else
+		for (uint8_t i=KEY_0; i<=KEY_9; i++) {
+			press_key( i, SHORT );
+			wait(10);
+			press_key( KEY_C, SHORT );
+		}
+		wait(100);
+
+#endif
 	}
 	return 0;
 }
