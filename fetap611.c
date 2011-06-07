@@ -77,6 +77,10 @@ static void press_key(enum key k, uint8_t duration) {
 	wait(1);
 }
 
+#define BELL_DDR DDRB
+#define BELL_PORT PORTB
+#define BELL_BIT PB0
+
 #define HUP_DDR DDRB
 #define HUP_PORT PORTB
 #define HUP_PIN PINB
@@ -214,8 +218,16 @@ static void incoming_ceased(void) {
 	}
 }
 
+void ring_bell(void) {
+	BELL_PORT &= ~(1<<BELL_BIT);
+	_delay_ms(50);
+	BELL_PORT |= 1<<BELL_BIT;
+}
+
 int main(void) {
 	LED_DDR |= 1<<LED_BIT;
+	BELL_DDR |= 1<<BELL_BIT;
+	BELL_PORT |= 1<<BELL_BIT; // PNP transistor, HIGH == on, LOW == off
 
 	HUP_DDR &= ~(1<<HUP_BIT); // input
 	HUP_PORT |= 1<<HUP_BIT; // enable internal pull-up
@@ -227,6 +239,7 @@ int main(void) {
 		*(keyboard[i][1]->ddr) |= 1<<keyboard[i][1]->bit;
 	}
 
+	ring_bell();
 	while(1) {
 		uint8_t hup = ( (HUP_PIN & (1<<HUP_BIT)) != 0 );
 		if (hup != st_hup) {
