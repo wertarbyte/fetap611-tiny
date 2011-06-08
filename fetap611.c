@@ -65,8 +65,8 @@ static void wait(uint8_t cs) {
 	}
 }
 
-#define SHORT 40
-#define LONG 250
+#define SHORT 30
+#define LONG 255
 
 static void press_key(enum key k, uint8_t duration) {
 	*(keyboard[k][0]->port) |= 1<<keyboard[k][0]->bit;
@@ -191,6 +191,13 @@ static void pickup(void) {
 
 static void dial_number(uint8_t n) {
 	switch (state) {
+		case IDLE:
+			if (n == 0) {
+				LED_PORT |= 1<<LED_BIT;
+				press_key( KEY_HUP, LONG*2 );
+				LED_PORT &= ~(1<<LED_BIT);
+			}
+			break;
 		case PICKEDUP:
 			state = DIALING;
 		case DIALING:
@@ -220,6 +227,7 @@ void ring_bell(void) {
 
 static void incoming_call(void) {
 	state = RINGING;
+	LED_PORT |= 1<<LED_BIT;
 	ring_bell();
 }
 
@@ -230,6 +238,7 @@ static void incoming_ceased(void) {
 	} else {
 		state = PICKEDUP;
 	}
+	LED_PORT &= ~(1<<LED_BIT);
 }
 
 int main(void) {
@@ -250,7 +259,6 @@ int main(void) {
 		*(keyboard[i][1]->ddr) |= 1<<keyboard[i][1]->bit;
 	}
 
-	ring_bell();
 	while(1) {
 		uint8_t hup = ( (HUP_PIN & (1<<HUP_BIT)) != 0 );
 		if (hup != st_hup) {
@@ -285,8 +293,8 @@ int main(void) {
 		if (state == RINGING && loopcount_ring > 50) {
 			incoming_ceased();
 		}
-		loopcount_dial++;
 		loopcount_ring++;
+		loopcount_dial++;
 		_delay_ms(25);
 	}
 	return 0;
