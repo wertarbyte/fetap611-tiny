@@ -170,6 +170,8 @@ static void hangup(void) {
 			press_key(KEY_C, LONG);
 			dial_num = 0;
 			loopcount_dial = 0;
+			state = IDLE;
+			break;
 		case ESTABLISHED:
 			// terminate connection
 			press_key(KEY_HUP, SHORT);
@@ -198,6 +200,11 @@ static void dial_number(uint8_t n) {
 			if (n == 0) {
 				LED_PORT |= 1<<LED_BIT;
 				press_key( KEY_HUP, LONG );
+				LED_PORT &= ~(1<<LED_BIT);
+			}
+			if (n == 9) {
+				LED_PORT |= 1<<LED_BIT;
+				press_key( KEY_HUP, SHORT );
 				LED_PORT &= ~(1<<LED_BIT);
 			}
 			break;
