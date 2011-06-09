@@ -86,6 +86,9 @@ static void press_key(enum key k, uint8_t duration) {
 #define RING_PIN PINB
 #define RING_BIT PB1
 
+static uint8_t st_ringing = 0;
+static uint8_t n_rings = 0;
+
 #define HUP_DDR DDRB
 #define HUP_PORT PORTB
 #define HUP_PIN PINB
@@ -194,7 +197,7 @@ static void dial_number(uint8_t n) {
 		case IDLE:
 			if (n == 0) {
 				LED_PORT |= 1<<LED_BIT;
-				press_key( KEY_HUP, LONG*2 );
+				press_key( KEY_HUP, LONG );
 				LED_PORT &= ~(1<<LED_BIT);
 			}
 			break;
@@ -288,10 +291,15 @@ int main(void) {
 		uint8_t ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
 		if (ringing && state != ESTABLISHED) {
 			loopcount_ring = 0;
-			incoming_call();
+			if (n_rings > 2)
+				incoming_call();
+			if (!st_ringing)
+				n_rings++;
 		}
+		st_ringing = ringing;
 		if (state == RINGING && loopcount_ring > 50) {
 			incoming_ceased();
+			n_rings = 0;
 		}
 		loopcount_ring++;
 		loopcount_dial++;
