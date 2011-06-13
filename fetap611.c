@@ -6,6 +6,8 @@
 #define LED_DDR DDRB
 #define LED_PORT PORTB
 
+#define ELEMS(x) ( sizeof(x)/sizeof(*x) )
+
 struct km_con {
 	volatile uint8_t *ddr;
 	volatile uint8_t *port;
@@ -31,32 +33,34 @@ enum key {
 	KEY_CNT
 };
 
-static struct km_con A = { &DDRD, &PORTD, PD2 };
-static struct km_con B = { &DDRD, &PORTD, PD3 };
-static struct km_con C = { &DDRA, &PORTA, PA0 };
-static struct km_con D = { &DDRD, &PORTD, PD4 };
-static struct km_con E = { &DDRD, &PORTD, PD0 };
-static struct km_con F = { &DDRD, &PORTD, PD1 };
-static struct km_con G = { &DDRD, &PORTD, PD6 };
-static struct km_con H = { &DDRA, &PORTA, PA1 };
-static struct km_con I = { &DDRD, &PORTD, PD5 };
+static struct km_con wires[] = {
+	[0] = { &DDRD, &PORTD, PD2 },
+	[1] = { &DDRD, &PORTD, PD3 },
+	[2] = { &DDRA, &PORTA, PA0 },
+	[3] = { &DDRD, &PORTD, PD4 },
+	[4] = { &DDRD, &PORTD, PD0 },
+	[5] = { &DDRD, &PORTD, PD1 },
+	[6] = { &DDRD, &PORTD, PD6 },
+	[7] = { &DDRA, &PORTA, PA1 },
+	[8] = { &DDRD, &PORTD, PD5 },
+};
 
-static const struct km_con *keyboard[][2] = {
-	[ KEY_0 ] = { &G, &H },
-	[ KEY_1 ] = { &F, &H },
-	[ KEY_2 ] = { &E, &F },
-	[ KEY_3 ] = { &F, &I },
-	[ KEY_4 ] = { &B, &H },
-	[ KEY_5 ] = { &E, &H },
-	[ KEY_6 ] = { &H, &I },
-	[ KEY_7 ] = { &B, &G },
-	[ KEY_8 ] = { &E, &G },
-	[ KEY_9 ] = { &G, &I },
-	[ KEY_C ] = { &B, &I },
-	[ KEY_CALL ] = { &A, &B },
-	[ KEY_HUP ] = { &C, &D },
-	[ KEY_ASTERISK ] = { &F, &G },
-	[ KEY_RIGHT ] = { &B, &E},
+static const uint8_t keyboard[KEY_CNT][2] = {
+	[ KEY_0 ] = { 6, 7 },
+	[ KEY_1 ] = { 5, 7 },
+	[ KEY_2 ] = { 4, 5 },
+	[ KEY_3 ] = { 5, 8 },
+	[ KEY_4 ] = { 1, 7 },
+	[ KEY_5 ] = { 4, 7 },
+	[ KEY_6 ] = { 7, 8 },
+	[ KEY_7 ] = { 1, 6 },
+	[ KEY_8 ] = { 4, 6 },
+	[ KEY_9 ] = { 6, 8 },
+	[ KEY_C ] = { 1, 8 },
+	[ KEY_CALL ] = { 0, 1 },
+	[ KEY_HUP ] = { 2, 3 },
+	[ KEY_ASTERISK ] = { 5, 6 },
+	[ KEY_RIGHT ] = { 1, 4},
 };
 
 static void wait(uint8_t cs) {
@@ -69,11 +73,15 @@ static void wait(uint8_t cs) {
 #define LONG 255
 
 static void press_key(enum key k, uint8_t duration) {
-	*(keyboard[k][0]->port) |= 1<<keyboard[k][0]->bit;
-	*(keyboard[k][1]->port) |= 1<<keyboard[k][1]->bit;
+	for (uint8_t i=0; i<2; i++) {
+		uint8_t n = keyboard[k][i];
+		*wires[n].port |= 1<<wires[n].bit;
+	}
 	wait(duration);
-	*(keyboard[k][0]->port) &= ~(1<<keyboard[k][0]->bit);
-	*(keyboard[k][1]->port) &= ~(1<<keyboard[k][1]->bit);
+	for (uint8_t i=0; i<2; i++) {
+		uint8_t n = keyboard[k][i];
+		*wires[n].port &= ~(1<<wires[n].bit);
+	}
 	wait(1);
 }
 
@@ -264,9 +272,8 @@ int main(void) {
 	DIAL_DDR &= ~(1<<DIAL_BIT); // input
 	DIAL_PORT |= 1<<DIAL_BIT; // enable internal pull-up
 	
-	for (uint8_t i=0; i<KEY_CNT; i++) {
-		*(keyboard[i][0]->ddr) |= 1<<keyboard[i][0]->bit;
-		*(keyboard[i][1]->ddr) |= 1<<keyboard[i][1]->bit;
+	for (uint8_t i=0; i<ELEMS(wires); i++) {
+		*wires[i].ddr |= 1<<wires[i].bit;
 	}
 
 	while(1) {
