@@ -30,6 +30,8 @@ enum key {
 	KEY_C,
 	KEY_ASTERISK,
 	KEY_RIGHT,
+	KEY_LEFT,
+	KEY_MENU,
 	KEY_CNT
 };
 
@@ -61,6 +63,7 @@ static const uint8_t keyboard[KEY_CNT][2] = {
 	[ KEY_HUP ] = { 2, 3 },
 	[ KEY_ASTERISK ] = { 5, 6 },
 	[ KEY_RIGHT ] = { 1, 4},
+	[ KEY_LEFT ] = { 4, 8},
 };
 
 static void wait(uint8_t cs) {
