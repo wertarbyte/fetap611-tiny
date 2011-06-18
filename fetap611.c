@@ -167,6 +167,20 @@ static enum phone_state {
 	RINGING,
 } state = IDLE;
 
+static void dialtone(uint8_t enabled) {
+	if (enabled) {
+		DDRB |= 1<<PB3;
+		TCCR1A |= 1<<COM1A0;
+		TCCR1B |= 1<<CS10 | 1<<WGM12;
+		OCR1A = 0x8E1;
+	} else {
+		// disable timer
+		TCCR1B &= ~(1<<CS10);
+		// set output pin to 0
+		PORTB &= ~(1<<PB3);
+	}
+}
+
 static void hangup(void) {
 	switch(state) {
 		case RINGING:
@@ -189,12 +203,14 @@ static void hangup(void) {
 		default:
 			state = IDLE;
 	}
+	dialtone(0);
 }
 
 static void pickup(void) {
 	switch(state) {
 		case IDLE:
 			state = PICKEDUP;
+			dialtone(1);
 			break;
 		case RINGING:
 			// accept phone call
@@ -221,6 +237,7 @@ static void dial_number(uint8_t n) {
 			break;
 		case PICKEDUP:
 			state = DIALING;
+			dialtone(0);
 		case DIALING:
 		case ESTABLISHED:
 			press_key(n, SHORT); // for 0-9, the enum is sorted
@@ -248,6 +265,7 @@ void ring_bell(void) {
 
 static void incoming_call(void) {
 	state = RINGING;
+	dialtone(0);
 	LED_PORT |= 1<<LED_BIT;
 	ring_bell();
 }
@@ -274,11 +292,13 @@ int main(void) {
 	HUP_PORT |= 1<<HUP_BIT; // enable internal pull-up
 	DIAL_DDR &= ~(1<<DIAL_BIT); // input
 	DIAL_PORT |= 1<<DIAL_BIT; // enable internal pull-up
+
 	
 	for (uint8_t i=0; i<ELEMS(wires); i++) {
 		*wires[i].ddr |= 1<<wires[i].bit;
 	}
 
+	dialtone(0);
 	while(1) {
 		uint8_t hup = ( (HUP_PIN & (1<<HUP_BIT)) != 0 );
 		if (hup != st_hup) {
