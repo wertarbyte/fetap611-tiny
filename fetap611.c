@@ -172,7 +172,7 @@ static void dialtone(uint8_t enabled) {
 		DDRB |= 1<<PB3;
 		TCCR1A |= 1<<COM1A0;
 		TCCR1B |= 1<<CS10 | 1<<WGM12;
-		OCR1A = 0x8E1;
+		OCR1A = ( F_CPU / (2*425) );
 	} else {
 		// disable timer
 		TCCR1B &= ~(1<<CS10);
