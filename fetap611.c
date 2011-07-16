@@ -25,13 +25,12 @@ enum key {
 	KEY_7,
 	KEY_8,
 	KEY_9,
-	KEY_HUP,
-	KEY_CALL,
+	KEY_ACK,
 	KEY_C,
 	KEY_ASTERISK,
-	KEY_RIGHT,
-	KEY_LEFT,
-	KEY_MENU,
+	KEY_SHARP,
+	KEY_UP,
+	KEY_DOWN,
 	KEY_CNT
 };
 
@@ -48,22 +47,22 @@ static struct km_con wires[] = {
 };
 
 static const uint8_t keyboard[KEY_CNT][2] = {
-	[ KEY_0 ] = { 6, 7 },
-	[ KEY_1 ] = { 5, 7 },
-	[ KEY_2 ] = { 4, 5 },
-	[ KEY_3 ] = { 5, 8 },
-	[ KEY_4 ] = { 1, 7 },
-	[ KEY_5 ] = { 4, 7 },
-	[ KEY_6 ] = { 7, 8 },
-	[ KEY_7 ] = { 1, 6 },
-	[ KEY_8 ] = { 4, 6 },
-	[ KEY_9 ] = { 6, 8 },
-	[ KEY_C ] = { 1, 8 },
-	[ KEY_CALL ] = { 0, 1 },
-	[ KEY_HUP ] = { 2, 3 },
-	[ KEY_ASTERISK ] = { 5, 6 },
-	[ KEY_RIGHT ] = { 1, 4},
-	[ KEY_LEFT ] = { 4, 8},
+	[ KEY_0 ] = { 0, 4 },
+	[ KEY_1 ] = { 1, 6 },
+	[ KEY_2 ] = { 1, 5 },
+	[ KEY_3 ] = { 2, 3 },
+	[ KEY_4 ] = { 6, 7 },
+	[ KEY_5 ] = { 5, 7 },
+	[ KEY_6 ] = { 4, 7 },
+	[ KEY_7 ] = { 6, 8 },
+	[ KEY_8 ] = { 5, 8 },
+	[ KEY_9 ] = { 4, 8 },
+	[ KEY_C ] = { 0, 6 },
+	[ KEY_ACK ] = { 2, 5 },
+	[ KEY_UP ] = { 0, 3 },
+	[ KEY_DOWN ] = { 1, 3 },
+	[ KEY_ASTERISK ] = { 2, 6 },
+	[ KEY_SHARP ] = { 2, 4 },
 };
 
 static void wait(uint8_t cs) {
@@ -199,7 +198,9 @@ static void hangup(void) {
 			break;
 		case ESTABLISHED:
 			// terminate connection
-			press_key(KEY_HUP, SHORT);
+			press_key(KEY_ACK, SHORT);
+			// make sure we are back at the menu
+			press_key(KEY_C, SHORT);
 		default:
 			state = IDLE;
 	}
@@ -214,7 +215,7 @@ static void pickup(void) {
 			break;
 		case RINGING:
 			// accept phone call
-			press_key(KEY_CALL, SHORT);
+			press_key(KEY_ACK, SHORT);
 			state = ESTABLISHED;
 		default:
 			break;
@@ -226,12 +227,7 @@ static void dial_number(uint8_t n) {
 		case IDLE:
 			if (n == 0) {
 				LED_PORT |= 1<<LED_BIT;
-				press_key( KEY_HUP, LONG );
-				LED_PORT &= ~(1<<LED_BIT);
-			}
-			if (n == 9) {
-				LED_PORT |= 1<<LED_BIT;
-				press_key( KEY_HUP, SHORT );
+				// TODO switch off/on the phone
 				LED_PORT &= ~(1<<LED_BIT);
 			}
 			break;
@@ -253,7 +249,7 @@ static void dial_number(uint8_t n) {
 }
 
 static void connect(void) {
-	press_key( KEY_CALL, SHORT );
+	press_key( KEY_ACK, SHORT );
 	state = ESTABLISHED;
 }
 
@@ -325,7 +321,8 @@ int main(void) {
 		if (state == DIALING && loopcount_dial > 200) {
 			connect();
 		}
-		uint8_t ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
+		// we query the vibration motor connector, which is pulled to GND
+		uint8_t ringing = ( ( ~RING_PIN & (1<<RING_BIT) ) != 0);
 		if (ringing && state != ESTABLISHED) {
 			loopcount_ring = 0;
 			if (n_rings > 2)
