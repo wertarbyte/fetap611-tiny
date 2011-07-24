@@ -224,6 +224,7 @@ static void pickup(void) {
 			dialtone(1);
 			break;
 		case RINGING:
+			stop_bell();
 			// accept phone call
 			press_key(KEY_ACK, SHORT);
 			state = ESTABLISHED;
