@@ -87,6 +87,18 @@ static void press_key(enum key k, uint8_t duration) {
 	wait(1);
 }
 
+#define PWR_DDR DDRB
+#define PWR_PORT PORTB
+#define PWR_BIT PB2
+
+static void press_pwr(uint8_t duration) {
+	PWR_DDR |= 1<<PWR_BIT;
+	PWR_PORT &= ~(1<<PWR_BIT);
+	wait(duration);
+	PWR_PORT |= 1<<PWR_BIT;
+	PWR_DDR &= ~(1<<PWR_BIT);
+}
+
 #define BELL_DDR DDRB
 #define BELL_PORT PORTB
 #define BELL_BIT PB0
@@ -95,9 +107,6 @@ static void press_key(enum key k, uint8_t duration) {
 #define RING_PORT PORTB
 #define RING_PIN PINB
 #define RING_BIT PB1
-
-static uint8_t st_ringing = 0;
-static uint8_t n_rings = 0;
 
 #define HUP_DDR DDRB
 #define HUP_PORT PORTB
@@ -197,6 +206,7 @@ static void hangup(void) {
 			state = IDLE;
 			break;
 		case ESTABLISHED:
+			LED_PORT &= ~(1<<LED_BIT);
 			// terminate connection
 			press_key(KEY_ACK, SHORT);
 			// make sure we are back at the menu
@@ -227,7 +237,7 @@ static void dial_number(uint8_t n) {
 		case IDLE:
 			if (n == 0) {
 				LED_PORT |= 1<<LED_BIT;
-				// TODO switch off/on the phone
+				press_pwr(LONG);
 				LED_PORT &= ~(1<<LED_BIT);
 			}
 			break;
@@ -251,22 +261,33 @@ static void dial_number(uint8_t n) {
 static void connect(void) {
 	press_key( KEY_ACK, SHORT );
 	state = ESTABLISHED;
+	LED_PORT |= 1<<LED_BIT;
 }
 
 void ring_bell(void) {
 	BELL_PORT &= ~(1<<BELL_BIT);
-	_delay_ms(50);
+}
+
+void stop_bell(void) {
 	BELL_PORT |= 1<<BELL_BIT;
 }
+
+static uint8_t incoming_ring_counter = 0;
 
 static void incoming_call(void) {
 	state = RINGING;
 	dialtone(0);
 	LED_PORT |= 1<<LED_BIT;
-	ring_bell();
+	if (incoming_ring_counter++%20 > 10) {
+		stop_bell();
+	} else {
+		ring_bell();
+	}
 }
 
 static void incoming_ceased(void) {
+	stop_bell();
+	incoming_ring_counter = 0;
 	// FIXME we should use two distinguished states here
 	if (st_hup) {
 		state = IDLE;
@@ -279,17 +300,20 @@ static void incoming_ceased(void) {
 int main(void) {
 	LED_DDR |= 1<<LED_BIT;
 	BELL_DDR |= 1<<BELL_BIT;
+
+	PWR_PORT |= 1<<PWR_BIT;
+	PWR_DDR &= ~(1<<PWR_BIT);
+
+
 	BELL_PORT |= 1<<BELL_BIT; // PNP transistor, HIGH == on, LOW == off
 
 	RING_DDR &= ~(1<<RING_BIT);
-	// RING_PORT |= 1<<RING_BIT;
 
 	HUP_DDR &= ~(1<<HUP_BIT); // input
 	HUP_PORT |= 1<<HUP_BIT; // enable internal pull-up
 	DIAL_DDR &= ~(1<<DIAL_BIT); // input
 	DIAL_PORT |= 1<<DIAL_BIT; // enable internal pull-up
 
-	
 	for (uint8_t i=0; i<ELEMS(wires); i++) {
 		*wires[i].ddr |= 1<<wires[i].bit;
 	}
@@ -321,19 +345,14 @@ int main(void) {
 		if (state == DIALING && loopcount_dial > 200) {
 			connect();
 		}
-		// we query the vibration motor connector, which is pulled to GND
-		uint8_t ringing = ( ( ~RING_PIN & (1<<RING_BIT) ) != 0);
+		// we query the vibration motor connector, which is pulled to HIGH
+		uint8_t ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
 		if (ringing && state != ESTABLISHED) {
 			loopcount_ring = 0;
-			if (n_rings > 2)
-				incoming_call();
-			if (!st_ringing)
-				n_rings++;
+			incoming_call();
 		}
-		st_ringing = ringing;
-		if (state == RINGING && loopcount_ring > 50) {
+		if (state == RINGING && loopcount_ring > 100) {
 			incoming_ceased();
-			n_rings = 0;
 		}
 		loopcount_ring++;
 		loopcount_dial++;
