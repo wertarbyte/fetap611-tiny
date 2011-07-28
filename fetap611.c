@@ -248,12 +248,14 @@ static void dial_number(uint8_t n) {
 		case DIALING:
 		case ESTABLISHED:
 			press_key(n, SHORT); // for 0-9, the enum is sorted
+#if DEBUG
 			while (n--) {
 				LED_PORT |= 1<<LED_BIT;
 				_delay_ms(40);
 				LED_PORT &= ~(1<<LED_BIT);
 				_delay_ms(40);
 			}
+#endif
 		default:
 			break;
 	}
