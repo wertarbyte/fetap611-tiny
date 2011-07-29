@@ -5,6 +5,7 @@
 #define LED_BIT 7
 #define LED_DDR DDRB
 #define LED_PORT PORTB
+#define LED_PIN PINB
 
 #define ELEMS(x) ( sizeof(x)/sizeof(*x) )
 
@@ -108,6 +109,8 @@ static void press_pwr(uint8_t duration) {
 #define RING_PIN PINB
 #define RING_BIT PB1
 
+static void ringing(uint8_t on);
+
 #define HUP_DDR DDRB
 #define HUP_PORT PORTB
 #define HUP_PIN PINB
@@ -178,8 +181,8 @@ static enum phone_state {
 static void dialtone(uint8_t enabled) {
 	if (enabled) {
 		DDRB |= 1<<PB3;
-		TCCR1A |= 1<<COM1A0;
-		TCCR1B |= 1<<CS10 | 1<<WGM12;
+		TCCR1A = 1<<COM1A0;
+		TCCR1B = 1<<CS10 | 1<<WGM12;
 		OCR1A = ( F_CPU / (2*425) );
 	} else {
 		// disable timer
@@ -224,7 +227,7 @@ static void pickup(void) {
 			dialtone(1);
 			break;
 		case RINGING:
-			stop_bell();
+			ringing(0);
 			// accept phone call
 			press_key(KEY_ACK, SHORT);
 			state = ESTABLISHED;
@@ -267,30 +270,54 @@ static void connect(void) {
 	LED_PORT |= 1<<LED_BIT;
 }
 
-void ring_bell(void) {
+static void start_bell(void) {
 	BELL_PORT &= ~(1<<BELL_BIT);
 }
 
-void stop_bell(void) {
+static void stop_bell(void) {
 	BELL_PORT |= 1<<BELL_BIT;
 }
 
-static uint8_t incoming_ring_counter = 0;
+static volatile uint8_t bell_counter = 0;
+
+static void ringing(uint8_t on) {
+	if (on) {
+		TCCR1A = 0;
+		TCCR1B = (1<<CS11) | (1<<CS10) | (1 << WGM12);
+		TCNT1 = 0;
+		OCR1A = (F_CPU/64);
+		bell_counter = 0;
+		start_bell();
+		TIMSK |= (1<<OCIE1A);
+	} else {
+		TIMSK &= ~(1<<OCIE1A);
+		stop_bell();
+	}
+}
+
+/*
+ * Toggle bell every few seconds
+ */
+ISR(TIMER1_COMPA_vect) {
+	LED_PIN |= 1<<LED_BIT;
+	bell_counter++;
+	bell_counter %= 3;
+	if (bell_counter == 1) {
+		stop_bell();
+	}
+	if (bell_counter == 0) {
+		start_bell();
+	}
+}
 
 static void incoming_call(void) {
 	state = RINGING;
 	dialtone(0);
-	LED_PORT |= 1<<LED_BIT;
-	if (incoming_ring_counter++%20 > 10) {
-		stop_bell();
-	} else {
-		ring_bell();
-	}
+	ringing(1);
 }
 
 static void incoming_ceased(void) {
-	stop_bell();
-	incoming_ring_counter = 0;
+	ringing(0);
 	// FIXME we should use two distinguished states here
 	if (st_hup) {
 		state = IDLE;
@@ -316,6 +343,7 @@ int main(void) {
 	HUP_PORT |= 1<<HUP_BIT; // enable internal pull-up
 	DIAL_DDR &= ~(1<<DIAL_BIT); // input
 	DIAL_PORT |= 1<<DIAL_BIT; // enable internal pull-up
+	sei();
 
 	for (uint8_t i=0; i<ELEMS(wires); i++) {
 		*wires[i].ddr |= 1<<wires[i].bit;
@@ -349,15 +377,18 @@ int main(void) {
 			connect();
 		}
 		// we query the vibration motor connector, which is pulled to HIGH
-		uint8_t ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
-		if (ringing && state != ESTABLISHED) {
+		uint8_t is_ringing = ( ( RING_PIN & (1<<RING_BIT) ) != 0);
+		if (is_ringing && state != ESTABLISHED) {
 			loopcount_ring = 0;
-			incoming_call();
+			if (state != RINGING) {
+				incoming_call();
+			}
 		}
-		if (state == RINGING && loopcount_ring > 100) {
-			incoming_ceased();
+		if (state == RINGING) {
+			if (loopcount_ring++ > 100) {
+				incoming_ceased();
+			}
 		}
-		loopcount_ring++;
 		loopcount_dial++;
 		_delay_ms(25);
 	}
